@@ -16,21 +16,26 @@ function getOrCreateSession(userId) {
             
             // Mechanics & Physics States
             isWheelieing: false,
-            bikeAngle: 0,         // 0 degrees = flat. 90 degrees = vertical.
+            bikeAngle: 0,          // 0 degrees = flat. 90 degrees = vertical.
             totalBalancePoints: 0, // Your incremental currency
-            multiplier: 1
+            multiplier: 1,
+
+            // === NEW: Environment Coordinates (Infinite Beach Road) ===
+            distanceTraveledFeet: 0, 
+            positionX: 0,          // 0 is dead center of the paved road. 
+            currentTerrain: "Paved Coastal Road" 
         };
     }
     return sessions[userId];
 }
 
-// === FIX: Homepage Route to replace "Cannot GET /" ===
+// === Homepage Route (Displays the updated game status) ===
 app.get('/', (req, res) => {
     res.send(`
-        <div style="font-family: sans-serif; text-align: center; margin-top: 50px;">
-            <h1 style="color: #2b6cb0;">🌊 Super73X Beach Engine 🚲</h1>
-            <p style="font-size: 18px; color: #4a5568;">Your backend is live, online, and running perfectly!</p>
-            <p style="color: #718096; font-size: 14px;">Connect your Roblox game to this URL to start popping wheelies at 37 MPH.</p>
+        <div style="font-family: sans-serif; text-align: center; margin-top: 50px; background-color: #f0fdf4; padding: 40px; border-radius: 10px; max-width: 600px; margin-left: auto; margin-right: auto; border: 2px solid #bbf7d0;">
+            <h1 style="color: #166534;">🌊 Super73X Beach Highway Engine 🛣️</h1>
+            <p style="font-size: 18px; color: #1e293b; font-weight: bold;">Backend is online and tracking physics!</p>
+            <p style="color: #475569; sinze: 15px;">Character Status: White Shirt, Black Shorts riding a Super73X at 37 MPH down an endless coastal road surrounded by beach sand.</p>
         </div>
     `);
 });
@@ -51,26 +56,33 @@ app.post('/api/bike/wheelie', (req, res) => {
     if (!session) return res.status(404).json({ error: "Player session not found" });
 
     session.isWheelieing = true;
-    session.bikeAngle += 15; 
+    session.bikeAngle += 15; // Pulling up increases the angle
 
-    let statusMessage = "Holding the wheelie perfectly!";
+    // Move the player forward along the infinite road based on their 37 MPH speed
+    // 37 MPH is roughly 54 feet per second
+    session.distanceTraveledFeet += 54; 
+
+    let statusMessage = `Cruising down the ${session.currentTerrain}!`;
     let pointsGained = 0;
 
+    // PHYSICS CHECK: Did they flip backwards?
     if (session.bikeAngle >= 85) {
-        statusMessage = "CRASH! You leaned too far back and looped out!";
+        statusMessage = "CRASH! You leaned too far back and looped out onto the road!";
         session.bikeAngle = 0; 
         session.isWheelieing = false;
     } else if (session.bikeAngle >= 30 && session.bikeAngle < 85) {
+        // Sweet spot rewards
         pointsGained = Math.floor(session.bikeAngle * session.multiplier);
         session.totalBalancePoints += pointsGained;
-    } else {
-        statusMessage = "Front wheel is barely off the ground. Pull up more!";
+        statusMessage = `Holding a perfect wheelie on the ${session.currentTerrain}!`;
     }
 
     res.json({
         success: true,
         bikeAngle: session.bikeAngle,
         currentSpeed: `${session.maxSpeedMPH} MPH`,
+        distanceTraveled: `${session.distanceTraveledFeet} feet`,
+        location: session.currentTerrain,
         totalBalancePoints: session.totalBalancePoints,
         pointsGained: pointsGained,
         message: statusMessage
@@ -83,6 +95,7 @@ app.post('/api/bike/brake', (req, res) => {
     const session = sessions[userId];
     if (!session) return res.status(404).json({ error: "Player session not found" });
 
+    // Safely drop the wheelie angle
     if (session.bikeAngle > 0) {
         session.bikeAngle = Math.max(0, session.bikeAngle - 25);
     }
@@ -91,11 +104,39 @@ app.post('/api/bike/brake', (req, res) => {
         success: true,
         bikeAngle: session.bikeAngle,
         currentSpeed: `${session.maxSpeedMPH} MPH`,
-        message: session.bikeAngle === 0 ? "Bike is flat on the beach." : "Braking! Front wheel coming down."
+        distanceTraveled: `${session.distanceTraveledFeet} feet`,
+        message: session.bikeAngle === 0 ? `Super73X tires are glued flat to the ${session.currentTerrain}.` : "Braking hard! Bringing the front wheel down."
+    });
+});
+
+// 4. STEER / DRIFT ENDPOINT (Allows steering between the road and the sandy beach)
+app.post('/api/bike/steer', (req, res) => {
+    const { userId, direction } = req.body; // direction can be "left" or "right"
+    const session = sessions[userId];
+    if (!session) return res.status(404).json({ error: "Player session not found" });
+
+    if (direction === "left") session.positionX -= 10;
+    if (direction === "right") session.positionX += 10;
+
+    // Environment Rules:
+    // If they steer too far off the center line (0), they go off the road and hit the sand
+    if (Math.abs(session.positionX) > 20) {
+        session.currentTerrain = "Sandy Beach (Heavy Drift)";
+        session.multiplier = 2; // High risk sand gives double points!
+    } else {
+        session.currentTerrain = "Paved Coastal Road";
+        session.multiplier = 1;
+    }
+
+    res.json({
+        success: true,
+        currentPositionX: session.positionX,
+        currentTerrain: session.currentTerrain,
+        message: `You steered ${direction}. You are now on the ${session.currentTerrain}.`
     });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Super73X Beach Engine running live on port ${PORT}`);
+    console.log(`Super73X Infinite Beach Highway running live on port ${PORT}`);
 });
