@@ -2,10 +2,8 @@ const express = require('express');
 const app = express();
 app.use(express.json());
 
-// In-memory database to store player bike states
 const sessions = {};
 
-// Helper function to initialize a player's session
 function getOrCreateSession(userId) {
     if (!sessions[userId]) {
         sessions[userId] = {
@@ -14,129 +12,119 @@ function getOrCreateSession(userId) {
             bikeModel: "Super73X",
             maxSpeedMPH: 37,
             
-            // Mechanics & Physics States
-            isWheelieing: false,
-            bikeAngle: 0,          // 0 degrees = flat. 90 degrees = vertical.
-            totalBalancePoints: 0, // Your incremental currency
-            multiplier: 1,
-
-            // === NEW: Environment Coordinates (Infinite Beach Road) ===
-            distanceTraveledFeet: 0, 
-            positionX: 0,          // 0 is dead center of the paved road. 
-            currentTerrain: "Paved Coastal Road" 
+            // Physics States based on Wheelie Life mechanics
+            bikeAngle: 0,          // 0 = flat on road. 90 = vertical.
+            totalDistanceFeet: 0, 
+            highScoreFeet: 0,      // Tracks their longest consecutive wheelie
+            isCrashed: false,
+            currentStatus: "Idling on the beach road"
         };
     }
     return sessions[userId];
 }
 
-// === Homepage Route (Displays the updated game status) ===
+// Homepage Landing Status
 app.get('/', (req, res) => {
     res.send(`
-        <div style="font-family: sans-serif; text-align: center; margin-top: 50px; background-color: #f0fdf4; padding: 40px; border-radius: 10px; max-width: 600px; margin-left: auto; margin-right: auto; border: 2px solid #bbf7d0;">
-            <h1 style="color: #166534;">🌊 Super73X Beach Highway Engine 🛣️</h1>
-            <p style="font-size: 18px; color: #1e293b; font-weight: bold;">Backend is online and tracking physics!</p>
-            <p style="color: #475569; sinze: 15px;">Character Status: White Shirt, Black Shorts riding a Super73X at 37 MPH down an endless coastal road surrounded by beach sand.</p>
+        <div style="font-family: sans-serif; text-align: center; margin-top: 50px; background-color: #fff7ed; padding: 40px; border-radius: 10px; max-width: 600px; margin-left: auto; margin-right: auto; border: 2px solid #ffedd5;">
+            <h1 style="color: #c2410c;">🏁 Wheelie Life Backend Engine 🏁</h1>
+            <p style="font-size: 18px; color: #1e293b; font-weight: bold;">Physics & Balance Simulator is Live</p>
+            <p style="color: #475569;">Super73X E-Bike traveling down an infinite beach road at 37 MPH. Keep your wheel steady!</p>
         </div>
     `);
 });
 
-// 1. GET PLAYER DATA
+// Fetch player data
 app.post('/api/bike/data', (req, res) => {
     const { userId } = req.body;
     if (!userId) return res.status(400).json({ error: "Missing userId" });
-
-    const session = getOrCreateSession(userId);
-    res.json(session);
+    res.json(getOrCreateSession(userId));
 });
 
-// 2. WHEELIE BUTTON ENDPOINT
+// WHEELIE THROTTLE BUTTON
 app.post('/api/bike/wheelie', (req, res) => {
     const { userId } = req.body;
     const session = sessions[userId];
-    if (!session) return res.status(404).json({ error: "Player session not found" });
+    if (!session) return res.status(404).json({ error: "Player not found" });
 
-    session.isWheelieing = true;
-    session.bikeAngle += 15; // Pulling up increases the angle
+    // Reset crash status if they are trying to ride again
+    if (session.isCrashed) {
+        session.isCrashed = false;
+        session.bikeAngle = 0;
+        session.totalDistanceFeet = 0;
+    }
 
-    // Move the player forward along the infinite road based on their 37 MPH speed
-    // 37 MPH is roughly 54 feet per second
-    session.distanceTraveledFeet += 54; 
+    // Wheelie Life Physics: Throttling pulls the front wheel UP fast
+    session.bikeAngle += 18; 
 
-    let statusMessage = `Cruising down the ${session.currentTerrain}!`;
-    let pointsGained = 0;
+    // Calculate progress if the front wheel is in the air
+    if (session.bikeAngle > 5) {
+        // Traveling at 37 MPH adds roughly 54 feet per action tick
+        session.totalDistanceFeet += 54;
+        
+        // Update high score record
+        if (session.totalDistanceFeet > session.highScoreFeet) {
+            session.highScoreFeet = session.totalDistanceFeet;
+        }
+    }
 
-    // PHYSICS CHECK: Did they flip backwards?
+    // CRASH CHECK (Looping out)
+    // In Wheelie Life, if you cross the balance point threshold (85+ degrees), you flip backwards!
     if (session.bikeAngle >= 85) {
-        statusMessage = "CRASH! You leaned too far back and looped out onto the road!";
-        session.bikeAngle = 0; 
-        session.isWheelieing = false;
-    } else if (session.bikeAngle >= 30 && session.bikeAngle < 85) {
-        // Sweet spot rewards
-        pointsGained = Math.floor(session.bikeAngle * session.multiplier);
-        session.totalBalancePoints += pointsGained;
-        statusMessage = `Holding a perfect wheelie on the ${session.currentTerrain}!`;
+        session.isCrashed = true;
+        session.bikeAngle = 0; // Bike falls over
+        session.totalDistanceFeet = 0; // Reset current run distance
+        session.currentStatus = "CRASHED! You looped out backward onto the road!";
+    } else if (session.bikeAngle >= 45 && session.bikeAngle <= 75) {
+        session.currentStatus = "SWEET SPOT! Maintaining perfect balance point.";
+    } else {
+        session.currentStatus = "Wheelie is active. Lean angle increasing!";
     }
 
     res.json({
-        success: true,
+        success: !session.isCrashed,
         bikeAngle: session.bikeAngle,
-        currentSpeed: `${session.maxSpeedMPH} MPH`,
-        distanceTraveled: `${session.distanceTraveledFeet} feet`,
-        location: session.currentTerrain,
-        totalBalancePoints: session.totalBalancePoints,
-        pointsGained: pointsGained,
-        message: statusMessage
+        currentSpeed: session.isCrashed ? "0 MPH" : `${session.maxSpeedMPH} MPH`,
+        currentRunDistance: `${session.totalDistanceFeet} ft`,
+        personalBest: `${session.highScoreFeet} ft`,
+        status: session.currentStatus
     });
 });
 
-// 3. BRAKE BUTTON ENDPOINT
+// REAR BRAKE BUTTON
 app.post('/api/bike/brake', (req, res) => {
     const { userId } = req.body;
     const session = sessions[userId];
-    if (!session) return res.status(404).json({ error: "Player session not found" });
+    if (!session) return res.status(404).json({ error: "Player not found" });
 
-    // Safely drop the wheelie angle
+    if (session.isCrashed) {
+        return res.json({ message: "You are already crashed. Press Wheelie to restart." });
+    }
+
+    // Smoothly drops the front wheel back down to prevent a loop out
     if (session.bikeAngle > 0) {
-        session.bikeAngle = Math.max(0, session.bikeAngle - 25);
+        session.bikeAngle = Math.max(0, session.bikeAngle - 28);
+    }
+
+    // If wheel hits the ground, the current wheelie streak stops gaining distance
+    if (session.bikeAngle === 0) {
+        session.currentStatus = "Front wheel dropped onto the paved beach road.";
+    } else {
+        session.currentStatus = "Braking applied! Stabilizing front wheel angle.";
+        session.totalDistanceFeet += 54; // Still moving at 37 MPH while riding the wheelie down
     }
 
     res.json({
         success: true,
         bikeAngle: session.bikeAngle,
         currentSpeed: `${session.maxSpeedMPH} MPH`,
-        distanceTraveled: `${session.distanceTraveledFeet} feet`,
-        message: session.bikeAngle === 0 ? `Super73X tires are glued flat to the ${session.currentTerrain}.` : "Braking hard! Bringing the front wheel down."
-    });
-});
-
-// 4. STEER / DRIFT ENDPOINT (Allows steering between the road and the sandy beach)
-app.post('/api/bike/steer', (req, res) => {
-    const { userId, direction } = req.body; // direction can be "left" or "right"
-    const session = sessions[userId];
-    if (!session) return res.status(404).json({ error: "Player session not found" });
-
-    if (direction === "left") session.positionX -= 10;
-    if (direction === "right") session.positionX += 10;
-
-    // Environment Rules:
-    // If they steer too far off the center line (0), they go off the road and hit the sand
-    if (Math.abs(session.positionX) > 20) {
-        session.currentTerrain = "Sandy Beach (Heavy Drift)";
-        session.multiplier = 2; // High risk sand gives double points!
-    } else {
-        session.currentTerrain = "Paved Coastal Road";
-        session.multiplier = 1;
-    }
-
-    res.json({
-        success: true,
-        currentPositionX: session.positionX,
-        currentTerrain: session.currentTerrain,
-        message: `You steered ${direction}. You are now on the ${session.currentTerrain}.`
+        currentRunDistance: `${session.totalDistanceFeet} ft`,
+        personalBest: `${session.highScoreFeet} ft`,
+        status: session.currentStatus
     });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Super73X Infinite Beach Highway running live on port ${PORT}`);
+    console.log(`Wheelie Life Simulator Engine running on port ${PORT}`);
 });
