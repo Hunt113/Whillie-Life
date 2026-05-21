@@ -11,11 +11,9 @@ function getOrCreateSession(userId) {
             shortsColor: "Black",
             bikeModel: "Super73X",
             maxSpeedMPH: 37,
-            
-            // Physics States based on Wheelie Life mechanics
-            bikeAngle: 0,          // 0 = flat on road. 90 = vertical.
+            bikeAngle: 0,          
             totalDistanceFeet: 0, 
-            highScoreFeet: 0,      // Tracks their longest consecutive wheelie
+            highScoreFeet: 0,      
             isCrashed: false,
             currentStatus: "Idling on the beach road"
         };
@@ -23,62 +21,129 @@ function getOrCreateSession(userId) {
     return sessions[userId];
 }
 
-// Homepage Landing Status
+// === UPDATED: Interactive Frontend Web UI ===
 app.get('/', (req, res) => {
     res.send(`
-        <div style="font-family: sans-serif; text-align: center; margin-top: 50px; background-color: #fff7ed; padding: 40px; border-radius: 10px; max-width: 600px; margin-left: auto; margin-right: auto; border: 2px solid #ffedd5;">
-            <h1 style="color: #c2410c;">🏁 Wheelie Life Backend Engine 🏁</h1>
-            <p style="font-size: 18px; color: #1e293b; font-weight: bold;">Physics & Balance Simulator is Live</p>
-            <p style="color: #475569;">Super73X E-Bike traveling down an infinite beach road at 37 MPH. Keep your wheel steady!</p>
-        </div>
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Wheelie Life Simulator</title>
+            <style>
+                body { font-family: sans-serif; background: #e0f2fe; text-align: center; margin: 0; padding: 20px; }
+                .game-container { background: white; max-width: 450px; margin: 20px auto; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+                .bike-display { height: 150px; display: flex; align-items: center; justify-content: center; font-size: 50px; margin: 20px 0; background: #f1f5f9; border-radius: 10px; position: relative; overflow: hidden; }
+                .road { position: absolute; bottom: 0; width: 100%; height: 10px; background: #475569; }
+                .bike { transition: transform 0.1s ease; transform-origin: bottom right; }
+                .btn { display: inline-block; width: 40%; padding: 15px; font-size: 18px; font-weight: bold; color: white; border: none; border-radius: 10px; margin: 10px 4%; cursor: pointer; }
+                .btn-wheelie { background: #3b82f6; }
+                .btn-brake { background: #ef4444; }
+                .stats { font-size: 16px; color: #334155; line-height: 1.6; text-align: left; background: #f8fafc; padding: 15px; border-radius: 8px; }
+                .status-msg { font-weight: bold; margin: 10px 0; min-height: 24px; }
+            </style>
+        </head>
+        <body>
+            <div class="game-container">
+                <h2 style="color: #0369a1; margin-top:0;">🌊 Super73X Beach Run 🛣️</h2>
+                <p style="font-size:12px; color:#64748b;">Rider: White Shirt & Black Shorts</p>
+                
+                <div class="bike-display">
+                    <div class="bike" id="bikeIcon">🚲</div>
+                    <div class="road"></div>
+                </div>
+
+                <div class="status-msg" id="statusBox" style="color: #0f172a;">Idling on the beach road</div>
+
+                <div style="margin-bottom: 20px;">
+                    <button class="btn btn-wheelie" onclick="triggerAction('wheelie')">WHEELIE</button>
+                    <button class="btn btn-brake" onclick="triggerAction('brake')">BRAKE</button>
+                </div>
+
+                <div class="stats">
+                    <strong>Speed:</strong> <span id="statSpeed">0 MPH</span><br>
+                    <strong>Angle:</strong> <span id="statAngle">0°</span><br>
+                    <strong>Current Run:</strong> <span id="statDistance">0 ft</span><br>
+                    <strong>Personal Best:</strong> <span id="statBest">0 ft</span>
+                </div>
+            </div>
+
+            <script>
+                // Simulate a fixed user session for web testing
+                const userId = "web_test_user";
+
+                async function triggerAction(endpoint) {
+                    const res = await fetch('/api/bike/' + endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: userId })
+                    });
+                    const data = await res.json();
+                    
+                    // Update HTML graphics and texts based on server data
+                    const angle = data.bikeAngle || 0;
+                    document.getElementById('bikeIcon').style.transform = 'rotate(-' + angle + 'deg)';
+                    document.getElementById('statAngle').innerText = angle + '°';
+                    document.getElementById('statSpeed').innerText = data.currentSpeed;
+                    document.getElementById('statDistance').innerText = data.currentRunDistance || '0 ft';
+                    document.getElementById('statBest').innerText = data.personalBest || '0 ft';
+                    
+                    const statusBox = document.getElementById('statusBox');
+                    statusBox.innerText = data.status || data.message;
+                    
+                    if(data.status && data.status.includes('CRASH')) {
+                        statusBox.style.color = '#ef4444';
+                    } else if(data.status && data.status.includes('SWEET')) {
+                        statusBox.style.color = '#16a34a';
+                    } else {
+                        statusBox.style.color = '#0f172a';
+                    }
+                }
+                
+                // Load initial data
+                triggerAction('data');
+            </script>
+        </body>
+        </html>
     `);
 });
 
-// Fetch player data
+// 1. GET PLAYER DATA
 app.post('/api/bike/data', (req, res) => {
     const { userId } = req.body;
     if (!userId) return res.status(400).json({ error: "Missing userId" });
     res.json(getOrCreateSession(userId));
 });
 
-// WHEELIE THROTTLE BUTTON
+// 2. WHEELIE THROTTLE BUTTON
 app.post('/api/bike/wheelie', (req, res) => {
     const { userId } = req.body;
     const session = sessions[userId];
     if (!session) return res.status(404).json({ error: "Player not found" });
 
-    // Reset crash status if they are trying to ride again
     if (session.isCrashed) {
         session.isCrashed = false;
         session.bikeAngle = 0;
         session.totalDistanceFeet = 0;
     }
 
-    // Wheelie Life Physics: Throttling pulls the front wheel UP fast
-    session.bikeAngle += 18; 
+    session.bikeAngle += 15; 
 
-    // Calculate progress if the front wheel is in the air
     if (session.bikeAngle > 5) {
-        // Traveling at 37 MPH adds roughly 54 feet per action tick
         session.totalDistanceFeet += 54;
-        
-        // Update high score record
         if (session.totalDistanceFeet > session.highScoreFeet) {
             session.highScoreFeet = session.totalDistanceFeet;
         }
     }
 
-    // CRASH CHECK (Looping out)
-    // In Wheelie Life, if you cross the balance point threshold (85+ degrees), you flip backwards!
     if (session.bikeAngle >= 85) {
         session.isCrashed = true;
-        session.bikeAngle = 0; // Bike falls over
-        session.totalDistanceFeet = 0; // Reset current run distance
-        session.currentStatus = "CRASHED! You looped out backward onto the road!";
+        session.bikeAngle = 0; 
+        session.totalDistanceFeet = 0; 
+        session.currentStatus = "CRASH! You looped out backward!";
     } else if (session.bikeAngle >= 45 && session.bikeAngle <= 75) {
-        session.currentStatus = "SWEET SPOT! Maintaining perfect balance point.";
+        session.currentStatus = "SWEET SPOT! Perfect balance point!";
     } else {
-        session.currentStatus = "Wheelie is active. Lean angle increasing!";
+        session.currentStatus = "Wheelie active! Watch your balance.";
     }
 
     res.json({
@@ -91,27 +156,25 @@ app.post('/api/bike/wheelie', (req, res) => {
     });
 });
 
-// REAR BRAKE BUTTON
+// 3. REAR BRAKE BUTTON
 app.post('/api/bike/brake', (req, res) => {
     const { userId } = req.body;
     const session = sessions[userId];
     if (!session) return res.status(404).json({ error: "Player not found" });
 
     if (session.isCrashed) {
-        return res.json({ message: "You are already crashed. Press Wheelie to restart." });
+        return res.json({ message: "Crashed. Press WHEELIE to restart." });
     }
 
-    // Smoothly drops the front wheel back down to prevent a loop out
     if (session.bikeAngle > 0) {
-        session.bikeAngle = Math.max(0, session.bikeAngle - 28);
+        session.bikeAngle = Math.max(0, session.bikeAngle - 25);
     }
 
-    // If wheel hits the ground, the current wheelie streak stops gaining distance
     if (session.bikeAngle === 0) {
-        session.currentStatus = "Front wheel dropped onto the paved beach road.";
+        session.currentStatus = "Bike flat on the paved road.";
     } else {
-        session.currentStatus = "Braking applied! Stabilizing front wheel angle.";
-        session.totalDistanceFeet += 54; // Still moving at 37 MPH while riding the wheelie down
+        session.currentStatus = "Braking applied! Bringing wheel down.";
+        session.totalDistanceFeet += 54; 
     }
 
     res.json({
