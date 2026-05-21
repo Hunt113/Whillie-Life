@@ -9,7 +9,6 @@ const sessions = {};
 function getOrCreateSession(userId) {
     if (!sessions[userId]) {
         sessions[userId] = {
-            // Cosmetics / Details requested
             shirtColor: "White",
             shortsColor: "Black",
             bikeModel: "Super73X",
@@ -17,7 +16,7 @@ function getOrCreateSession(userId) {
             
             // Mechanics & Physics States
             isWheelieing: false,
-            bikeAngle: 0,         // 0 degrees = flat on the ground. 90 degrees = vertical.
+            bikeAngle: 0,         // 0 degrees = flat. 90 degrees = vertical.
             totalBalancePoints: 0, // Your incremental currency
             multiplier: 1
         };
@@ -25,7 +24,18 @@ function getOrCreateSession(userId) {
     return sessions[userId];
 }
 
-// 1. GET PLAYER DATA (For loading character clothing and bike model in Roblox)
+// === FIX: Homepage Route to replace "Cannot GET /" ===
+app.get('/', (req, res) => {
+    res.send(`
+        <div style="font-family: sans-serif; text-align: center; margin-top: 50px;">
+            <h1 style="color: #2b6cb0;">🌊 Super73X Beach Engine 🚲</h1>
+            <p style="font-size: 18px; color: #4a5568;">Your backend is live, online, and running perfectly!</p>
+            <p style="color: #718096; font-size: 14px;">Connect your Roblox game to this URL to start popping wheelies at 37 MPH.</p>
+        </div>
+    `);
+});
+
+// 1. GET PLAYER DATA
 app.post('/api/bike/data', (req, res) => {
     const { userId } = req.body;
     if (!userId) return res.status(400).json({ error: "Missing userId" });
@@ -34,28 +44,23 @@ app.post('/api/bike/data', (req, res) => {
     res.json(session);
 });
 
-// 2. WHEELIE BUTTON ENDPOINT (Increases front-wheel angle and processes speed)
+// 2. WHEELIE BUTTON ENDPOINT
 app.post('/api/bike/wheelie', (req, res) => {
     const { userId } = req.body;
     const session = sessions[userId];
     if (!session) return res.status(404).json({ error: "Player session not found" });
 
     session.isWheelieing = true;
-    
-    // Pulling up increases the bike's angle toward a wheelie
-    // Every click or hold tick adds to the angle
     session.bikeAngle += 15; 
 
     let statusMessage = "Holding the wheelie perfectly!";
     let pointsGained = 0;
 
-    // PHYSICS CHECK: If the angle goes past 85 degrees, they flip backward!
     if (session.bikeAngle >= 85) {
         statusMessage = "CRASH! You leaned too far back and looped out!";
-        session.bikeAngle = 0; // Reset bike position
+        session.bikeAngle = 0; 
         session.isWheelieing = false;
     } else if (session.bikeAngle >= 30 && session.bikeAngle < 85) {
-        // They are in the "Sweet Spot" zone, award incremental currency!
         pointsGained = Math.floor(session.bikeAngle * session.multiplier);
         session.totalBalancePoints += pointsGained;
     } else {
@@ -72,15 +77,14 @@ app.post('/api/bike/wheelie', (req, res) => {
     });
 });
 
-// 3. BRAKE BUTTON ENDPOINT (Brings the front wheel back down safely)
+// 3. BRAKE BUTTON ENDPOINT
 app.post('/api/bike/brake', (req, res) => {
     const { userId } = req.body;
     const session = sessions[userId];
     if (!session) return res.status(404).json({ error: "Player session not found" });
 
-    // Hitting the brake drops the angle quickly to prevent looping out
     if (session.bikeAngle > 0) {
-        session.bikeAngle = Math.max(0, session.bikeAngle - 25); // Drops angle safely, stops at 0
+        session.bikeAngle = Math.max(0, session.bikeAngle - 25);
     }
 
     res.json({
