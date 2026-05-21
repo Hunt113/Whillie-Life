@@ -1,0 +1,12 @@
+{
+  "name": "wheelie-backend",
+  "version": "1.0.0",
+  "description": "Backend for Roblox Wheelie Simulator",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
